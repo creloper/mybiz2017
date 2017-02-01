@@ -1,0 +1,385 @@
+--15번 db서버 셋팅
+
+서버설정 -------------------
+hostname kbid-udb5
+
+#apt 설정
+cd /etc/apt
+cp sources.list sources.list.bak
+sed -i 's/kr.archive.ubuntu.com/ftp.daum.net/g' sources.list
+sed -i 's/security.ubuntu.com/ftp.daum.net/g' sources.list
+apt-get update
+--에러시
+sudo rm -rf /var/lib/apt/lists/*
+sudo apt-get update
+apt-get upgrade
+
+sudo apt-get install software-properties-common
+sudo apt-get install python-software-properties
+
+sudo apt-key adv --recv-keys --keyserver hkp://keyserver.ubuntu.com:80 0xcbcb082a1bb943db
+sudo add-apt-repository 'deb http://ftp.kaist.ac.kr/mariadb/repo/10.0/ubuntu precise main'
+sudo apt-add-repository ppa:ondrej/mysql-5.6
+
+sudo apt-get update
+
+apt-get install libaio1 libaio-dev libssl-dev
+apt-get build-dep mysql-server
+apt-get install pkg-config libpcre3-dev
+
+apt-get install rdate
+
+
+- 계정 생성
+groupadd -g 500 mysql
+useradd -g 500 -u 500 mysql
+passwd mysql
+
+
+- mariadb binary 설정
+mv mariadb-10.0.16-linux-glibc_214-x86_64.tar.gz /home
+cd /home
+tar xvf mariadb-10.0.16-linux-glibc_214-x86_64.tar.gz 
+ln -s mariadb-10.0.16-linux-x86_64 mariadb
+chown -R mysql.mysql mariadb
+chown -R mysql.mysql mariadb-10.0.16-linux-x86_64
+
+
+- 세션 관련 항목 변경
+vi /etc/security/limits.conf 
+
+# 하단 추가
+mysql            soft    nproc           8192
+mysql            hard    nproc           16384
+mysql            soft    nofile          8192
+mysql            hard    nofile          65536
+
+vi /etc/profile
+
+# 하단 추가
+if [ $USER = "mysql" ]; then
+  ulimit -u 16384 -n 65536
+fi
+
+PATH=$PATH:/home/mariadb/bin
+export PATH
+
+
+
+- mysql configuration file 설정
+vi /etc/my.cnf
+
+my.cnf.maria 참고
+
+mkdir /home/mysql
+mkdir /home/mysql/data
+mkdir /home/mysql/tmp
+mkdir /home/mysql/logs
+ln -s /home/mariadb /usr/local/mysql
+
+chown -R mysql.mysql /usr/local/mysql /home/mysql /etc/my.cnf 
+
+cd /home/mariadb
+
+./scripts/mysql_install_db --user=mysql
+
+Installing MariaDB/MySQL system tables in '/home/mysql/data' ...
+OK
+Filling help tables...
+OK
+
+To start mysqld at boot time you have to copy
+support-files/mysql.server to the right place for your system
+
+PLEASE REMEMBER TO SET A PASSWORD FOR THE MariaDB root USER !
+To do so, start the server, then issue the following commands:
+
+'/home/mariadb/bin/mysqladmin' -u root password 'new-password'
+'/home/mariadb/bin/mysqladmin' -u root -h 127.0.1.1 password 'new-password'
+
+Alternatively you can run:
+'/home/mariadb/bin/mysql_secure_installation'
+
+which will also give you the option of removing the test
+databases and anonymous user created by default.  This is
+strongly recommended for production servers.
+
+See the MariaDB Knowledgebase at http://mariadb.com/kb or the
+MySQL manual for more instructions.
+
+You can start the MariaDB daemon with:
+cd '/home/mariadb' ; /home/mariadb/bin/mysqld_safe --datadir='/home/mysql/data'
+
+You can test the MariaDB daemon with mysql-test-run.pl
+cd '/home/mariadb/mysql-test' ; perl mysql-test-run.pl
+
+Please report any problems at http://mariadb.org/jira
+
+The latest information about MariaDB is available at http://mariadb.org/.
+You can find additional information about the MySQL part at:
+http://dev.mysql.com
+Support MariaDB development by buying support/new features from
+SkySQL Ab. You can contact us about this at sales@skysql.com.
+Alternatively consider joining our community based development effort:
+http://mariadb.com/kb/en/contributing-to-the-mariadb-project/
+
+#cp support-files/mysql.server /etc/init.d/mysql
+
+#update-rc.d mysql defaults
+
+#apt-get install mariadb-test-10.0
+
+
+#mroonga install(전문 검색 엔진)
+
+# mecab 설치
+tar xvf mecab-0.996.tar.gz
+cd mecab-0.996
+./configure
+make
+make check
+make install
+ldconfig
+
+# mecab 사전 설치
+tar xvf mecab-ipadic-2.7.0-20070801.tar.gz 
+cd mecab-ipadic-2.7.0-20070801/
+./configure
+make
+make install
+
+# groonga 설치
+tar xvf groonga-4.0.6.tar.gz
+cd groonga-4.0.6/
+./configure
+make -j$(grep '^processor' /proc/cpuinfo | wc -l)	# 20분 소요
+make install
+ldconfig
+
+tar xvf groonga-normalizer-mysql-1.0.6.tar.gz 
+cd groonga-normalizer-mysql-1.0.6/
+./configure
+make
+make install
+
+tar xvfz mariadb-10.0.14.tar.gz
+
+# mroonga 설치
+tar xvf mroonga-4.06.tar.gz
+cd mroonga-4.06/
+./configure \
+--with-mysql-source=/home/ko012/install/mariadb-10.0.14/ \
+--with-mysql-config=/home/mariadb/bin/mysql_config
+make
+make install
+ldconfig
+
+
+
+# - 확인
+ll /home/mariadb/lib/plugin
+
+-rwxr-xr-x 1 root  root      1091  7월  9 19:38 ha_mroonga.la*
+lrwxrwxrwx 1 root  root        19  7월  9 19:38 ha_mroonga.so -> ha_mroonga.so.0.0.0*
+lrwxrwxrwx 1 root  root        19  7월  9 19:38 ha_mroonga.so.0 -> ha_mroonga.so.0.0.0*
+-rwxr-xr-x 1 root  root   4192012  7월  9 19:38 ha_mroonga.so.0.0.0*
+
+
+mysql>INSTALL PLUGIN mroonga SONAME 'ha_mroonga.so';
+mysql>CREATE FUNCTION last_insert_grn_id RETURNS INTEGER soname 'ha_mroonga.so';
+mysql>CREATE FUNCTION mroonga_snippet RETURNS STRING soname 'ha_mroonga.so';
+mysql>show engines;
+mysql>show plugins;
+
+
+# Test
+# table 생성
+use test;
+CREATE TABLE tb_test (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    content VARCHAR(255),
+    FULLTEXT INDEX fx_content (content) COMMENT 'parser "TokenBigramIgnoreBlankSplitSymbolAlphaDigit"'
+) ENGINE=mroonga COMMENT='engine "innodb"' DEFAULT CHARSET utf8;
+
+# 데이터 insert
+INSERT INTO tb_test (content) VALUES ("오늘은 MySQL 공부를 했습니다. 내일도 MySQL 공부를 할 것입니다.");
+INSERT INTO tb_test (content) VALUES ("오늘은 MySQL 공부를 했지만, 내일은 Sqlite 공부를 할 것입니다.");
+
+# 전문 검색 쿼리 테스트
+SELECT *, MATCH (content) AGAINST ('MySQL' IN BOOLEAN MODE) as score
+FROM tb_test
+WHERE MATCH (content) AGAINST ('MySQL' IN BOOLEAN MODE)
+ORDER BY MATCH (content) AGAINST ('MySQL' IN BOOLEAN MODE) DESC;
++----+-------------------------------------------------------------------------------------+-------+
+| id | content | score |
++----+-------------------------------------------------------------------------------------+-------+
+| 1 | 오늘은 MySQL 공부를 했습니다. 내일도 MySQL 공부를 할 것입니다. | 2 |
+| 2 | 오늘은 MySQL 공부를 했지만, 내일은 Sqlite 공부를 할 것입니다. | 1 |
++----+-------------------------------------------------------------------------------------+-------+
+SELECT *, MATCH (content) AGAINST ('ySQL' IN BOOLEAN MODE) as score
+FROM tb_test
+WHERE MATCH (content) AGAINST ('ySQL' IN BOOLEAN MODE)
+ORDER BY MATCH (content) AGAINST ('ySQL' IN BOOLEAN MODE) DESC;
++----+-------------------------------------------------------------------------------------+-------+
+| id | content | score |
++----+-------------------------------------------------------------------------------------+-------+
+| 1 | 오늘은 MySQL 공부를 했습니다. 내일도 MySQL 공부를 할 것입니다. | 2 |
+| 2 | 오늘은 MySQL 공부를 했지만, 내일은 Sqlite 공부를 할 것입니다. | 1 |
++----+-------------------------------------------------------------------------------------+-------+
+
+
+#percona utility install
+$ apt-key adv --keyserver keys.gnupg.net --recv-keys 1C4CBDCDCD2EFD2A
+
+※에러 발생-----------------------------------
+gpg: requesting key CD2EFD2A from hkp server keys.gnupg.net
+gpg: key CD2EFD2A: "Percona MySQL Development Team <mysql-dev@percona.com>" not changed
+gpg: Total number processed: 1
+gpg:              unchanged: 1
+----------------------------------------------
+1차시도------------------------------------------
+wget -O - https://www.percona.com/downloads/RPM-GPG-KEY-percona | gpg --import
+gpg --armor --export 1C4CBDCDCD2EFD2A | apt-key add -
+----------------------------------------------
+2차시도------------------------------------------
+gpg --keyserver keys.gnupg.net --recv 1C4CBDCDCD2EFD2A
+gpg --export --armor 1C4CBDCDCD2EFD2A | apt-key add -
+apt-key list
+----------------------------------------------
+
+#Add this to /etc/apt/sources.list, replacing VERSION with the name of your distribution:
+
+deb http://repo.percona.com/apt precise main
+deb-src http://repo.percona.com/apt precise main
+
+apt-get update
+
+apt-get install percona-toolkit
+apt-get install percona-xtrabackup
+
+percona 실패------------------------------------------
+컴파일작업
+tar xvfz percona-toolkit.tar.gz
+perl Makefile.PL
+make
+make test
+make install
+----------------------------------------------
+
+apt-get --purge remove 프로그램명 //삭제
+
+# 한글 설정
+#sudo locale-gen ko_KR.EUC-KR
+sudo locale-gen ko_KR.UTF-8 
+
+$vi /etc/default/locale
+LANG="ko_KR.UTF-8"
+LANGUAGE="ko_KR:ko:en_US:en"
+
+
+# euckr -> utf8 (file)
+
+#File
+$iconv -c -f euc-kr -t utf-8 test.txt > test-utf8.txt
+
+#File Name
+$convmv -f euc-kr -t utf-8 [euc].txt 한글.txt
+
+$ sudo apt-get install nfs-common
+
+db 작업------------------
+mkdir /data/dbbackup
+
+mount 192.168.150.226:/share/CACHEDEV3_DATA/NFSFiles/DBBackup /data/dbbackup
+
+cd /home/mysql
+
+mv data data_original
+ll
+mkdir data
+ll
+chown mysql:mysql data
+
+========================================
+
+--slave xtrabackup
+
+-- 8번서버 백업
+# rm -rf /data/dbbackup/fullbackup208
+# /usr/bin/innobackupex --user admin --password spark1 --parallel=4 --defaults-file=/etc/my.cnf --no-timestamp --slave-info /data/dbbackup/fullbackup208
+# /usr/bin/innobackupex --user admin --password spark1 --apply-log /data/dbbackup/fullbackup208
+
+--백업
+
+# mkdir -p /home/xtrabackup
+# /usr/bin/innobackupex --user admin --password spark1 --parallel=4 --defaults-file=/etc/mysql/my.cnf --no-timestamp --slave-info /home/xtrabackup/fullbackup
+
+# /usr/bin/innobackupex --user admin --password spark1 --apply-log /home/xtrabackup/fullbackup
+
+-복원
+
+####신규 설치된 DB 서버 업그레이드 하여 GTid가 셋팅되게 한다. ./bin/mysql_upgrade
+
+#cd /home/mysql/data/
+
+# /usr/bin/innobackupex --copy-back /data/dbbackup/fullbackup208
+
+
+chown -R mysql:mysql data
+
+cd data
+
+tar xvfzp mrn.tar.gz	//마스터의 mrn 복사
+
+find ./ -type f -exec chmod -v 660 {} \;
+find ./ -type d -exec chmod -v 700 {} \;
+
+vi /home/mysql/data/xtrabackup_slave_info
+
+service mysql start --skip-slave-start
+
+mysql -uroot -p
+
+masterDB> show master status;
+
+#Gtid 경우
+
+CHANGE MASTER TO MASTER_HOST='192.168.150.209', MASTER_USER='repl', MASTER_PASSWORD='spark1',  MASTER_LOG_FILE='mariadb-bin.016239',master_use_gtid = slave_pos;
+
+SHOW SLAVE STATUS\G
+
+또는,
+
+STOP SLAVE;
+
+--아래 예전 방식처리 하면 에러
+
+CHANGE MASTER TO
+    MASTER_HOST='192.168.150.209',
+    MASTER_USER='repl',
+    MASTER_PASSWORD='spark1',
+    MASTER_LOG_FILE='mariadb-bin.012862',
+    MASTER_LOG_POS=106774198;
+    
+START SLAVE;
+
+=========================================
+/usr/local/bin/mysqld_safe --skip-slave-start
+service mysql start --skip-slave-start
+
+
+-완료-
+-- 15번서버 백업
+# rm -rf /data/dbbackup/fullbackup115
+# /usr/bin/innobackupex --user admin --password spark1 --parallel=4 --defaults-file=/etc/mysql/my.cnf --no-timestamp --slave-info /home/ko012/fullbackup115
+# /usr/bin/innobackupex --user admin --password spark1 --apply-log /home/ko012/fullbackup115
+
+root@ubuntu:~# echo 30 > /proc/sys/net/ipv4/tcp_fin_timeout
+root@ubuntu:~# echo 1 > /proc/sys/net/ipv4/tcp_rfc1337
+root@ubuntu:~# echo 1 > /proc/sys/net/ipv4/tcp_tw_recycle
+root@ubuntu:~# echo 1 > /proc/sys/net/ipv4/tcp_tw_reuse
+root@ubuntu:~# vi /etc/sysctl.conf
+net.ipv4.tcp_fin_timeout = 30
+net.ipv4.ip_local_port_range = 1024 65535
+
+재시작
